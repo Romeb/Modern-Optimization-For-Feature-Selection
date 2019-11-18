@@ -12,3 +12,5 @@ The Genetic Algorithm proposed using only 8 variables, The accuracy rate for bot
 The NSGA-II however performed very well, using 15 variables the accuracy rate of the Random forest increased to 85%. GBM achieved 83% using only 16 variables. 
 
 
+
+Thanks to Pablo Casas (https://blog.datascienceheroes.com/feature-selection-using-genetic-algorithms-in-r/).
