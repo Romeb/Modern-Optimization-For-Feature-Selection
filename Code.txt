@@ -1,0 +1,163 @@
+#Libraries used
+
+library(dplyr)
+library(funModeling)
+library(GA)
+library(readr)
+library(mlr)
+library(nsga3)
+library(caret)
+
+churn <- read_csv("churn4.csv")
+churn <- churn[2:21]
+
+# NSGA-II Feature Selection
+
+
+churn1 <- churn %>% mutate(Churn = factor(ifelse(Churn == "Yes", "1", "2")))
+dmy <- dummyVars(" ~ .", data = churn1)
+churn3 <- data.frame(predict(dmy, newdata = churn1))
+churn3 <- cbind(churn3, churn1$Churn)
+churn3$Churn.1 <- NULL
+churn3$Churn.2 <- NULL
+colnames(churn3)[44] <- "Churn"
+
+
+mrf <- mlr::makeLearner("classif.randomForest", predict.type = "prob")
+
+gbm_learner <- mlr::makeLearner("classif.gbm", predict.type = "prob")
+
+
+rsmp <- mlr::makeResampleDesc("CV", iters = 2)
+measures <- list(mlr::mmce)
+
+f_auc <- function(pred){auc <- mlr::performance(pred, auc)
+return(as.numeric(auc))}
+objective <- c(f_auc)
+o_names <- c("AUC", "nf")
+par <- rPref::high(AUC)*rPref::low(nf)
+
+xgboostnsga3 <- nsga3fs(df = churn3, target = "Churn", obj_list = objective,
+obj_names = o_names, pareto = par, pop_size = 100, max_gen = 100,
+model = gbm_learner, resampling = rsmp,
+num_features = TRUE, r_measures = measures, cpus = 2)
+
+nsga4fsplot <- nsga3fs(df = churn3, target = "Churn", obj_list = objective,
+obj_names = o_names, pareto = par, pop_size = 50, max_gen = 100,
+model = mrf, resampling = rsmp,
+num_features = TRUE, r_measures = measures, cpus = 2)
+
+plot(xgboostnsga3$pf_raw$objective_values)
+plot(nsga4fsplot$pf_raw$objective_values)
+
+# Genetic Algorithm 
+
+https://github.com/pablo14/genetic-algorithm-feature-selection
+
+custom_fitness <- function(vars, data_x, data_y, p_sampling)
+{
+  # speeding up things with sampling
+  ix=get_sample(data_x, percentage_tr_rows = p_sampling)
+  data_2=data_x[ix,]
+  data_y_smp=data_y[ix]
+  
+  # keep only vars from current solution
+  names=colnames(data_2)
+  names_2=names[vars==1]
+  # get the columns of the current solution
+  data_sol=data_2[, names_2]
+  
+  # get the roc value from the created model
+  accuracy_value=get_accuracy_metric(data_sol, data_y_smp, names_2)
+  
+  # get the total number of vars for the current selection
+  q_vars=sum(vars)
+  
+  # time for your magic
+  fitness_value=accuracy_value/q_vars
+  
+  return(fitness_value)
+}
+
+
+dumchurn <- read_csv("churn7.csv")
+dumchurn <- dumchurn[2:45]
+
+bb <- select(dumchurn, -Churn)
+tt <- as.factor(dumchurn$Churn)
+col_names <- colnames(bb)
+param_nBits <- ncol(bb)
+
+
+GA_1 <- ga(fitness = function(vars) custom_fitness(vars = vars, data_x = bb, data_y = tt, p_sampling = 0.7), type = "binary", # optimization data type
+            crossover=gabin_uCrossover,  # cross-over method
+            elitism = 2, # number of best ind. to pass to next iteration
+            pmutation = 0.04, # mutation rate prob
+            popSize = 100, # the number of indivduals/solutions
+            nBits = param_nBits, # total number of variables
+            names=col_names, # variable name
+            run=5, # max iter without improvement (stopping criteria)
+            maxiter = 100, # total runs or generations
+            monitor=plot, # plot the result at each iteration
+            keepBest = TRUE, # keep the best solution at the end
+            parallel = T, # allow parallel procesing
+            seed=84211 # for reproducibility purposes
+ )
+ 
+summary(GA_1)
+ 
+best_vars_ga=col_names[GA_1@solution[1,]==1]
+ 
+
+featurchurn <- dumchurn[best_vars_ga]
+
+
+ intrain <- createDataPartition(churn4$Churn, p=0.7, list=FALSE)
+ set.seed(1234)
+ training <- churn4[intrain,]
+ testing <- churn4[-intrain,]
+ control <- trainControl(method="cv", number=2)
+ metric <- "Accuracy"
+ fit.gbm <- train(Churn~., data=training, method="gbm", metric=metric, trControl=control, verbose=FALSE)
+ fit.rf <- train(Churn~., data=training, method="rf", metric=metric, trControl=control, verbose=FALSE)
+ results <- resamples(list(rf=fit.rf, gbm=fit.gbm))
+ summary(results)
+ 
+
+# Simulating Annealing
+
+
+
+intrain <- createDataPartition(churn4$Churn, p=0.7, list=FALSE)
+ training <- churn4[intrain,]
+ testing <- churn4[-intrain,]
+ control <- trainControl(method="cv", number=2)
+ trainX <- training[,1:19] 
+
+ 
+ sa_ctrl <- safsControl(functions = rfSA,
+                       method = "repeatedcv",
+                       repeats = 5,
+                       improve = 5)
+					   
+rf_sa <- safs(x = trainX, y = training$Churn,
+              safsControl = sa_ctrl)
+ 
+#  Machine Learning Models
+ 
+ intrain <- createDataPartition(churn4$Churn, p=0.7, list=FALSE)
+ set.seed(1234)
+ training <- churn4[intrain,]
+ testing <- churn4[-intrain,]
+ control <- trainControl(method="cv", number=2)
+ metric <- "Accuracy"
+ fit.gbm <- train(Churn~., data=training, method="gbm", metric=metric, trControl=control, verbose=FALSE)
+ fit.rf <- train(Churn~., data=training, method="rf", metric=metric, trControl=control, verbose=FALSE)
+ results <- resamples(list(rf=fit.rf, gbm=fit.gbm))
+ summary(results)
+ 
+ 
+ 
+ 
+ 
+ 
